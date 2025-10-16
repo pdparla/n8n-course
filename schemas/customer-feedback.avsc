@@ -1,0 +1,54 @@
+{
+  "type": "record",
+  "name": "CustomerFeedbackEvent",
+  "namespace": "com.n8n.kafka.events",
+  "doc": "Schema for customer feedback events",
+  "fields": [
+    {
+      "name": "event_type",
+      "type": "string",
+      "default": "customer_feedback"
+    },
+    {
+      "name": "event_data",
+      "type": {
+        "type": "record",
+        "name": "CustomerFeedbackData",
+        "fields": [
+          {
+            "name": "customer_id",
+            "type": "string",
+            "doc": "Unique customer identifier"
+          },
+          {
+            "name": "feedback",
+            "type": "string",
+            "doc": "Customer feedback text"
+          },
+          {
+            "name": "rating",
+            "type": "int",
+            "doc": "Rating from 1-5"
+          },
+          {
+            "name": "product_id",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Optional product identifier"
+          },
+          {
+            "name": "order_id",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Optional order identifier"
+          }
+        ]
+      }
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "doc": "Event timestamp in ISO 8601 format"
+    }
+  ]
+}

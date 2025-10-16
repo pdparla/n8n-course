@@ -1,0 +1,59 @@
+{
+  "type": "record",
+  "name": "WorkflowEvent",
+  "namespace": "com.n8n.kafka.events",
+  "doc": "Base schema for all workflow events",
+  "fields": [
+    {
+      "name": "event_type",
+      "type": "string",
+      "doc": "Type of event (e.g., customer_feedback, order_created, system_log)"
+    },
+    {
+      "name": "event_data",
+      "type": {
+        "type": "map",
+        "values": ["null", "string", "int", "long", "float", "double", "boolean"]
+      },
+      "doc": "Dynamic event data as key-value pairs"
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "logicalType": "timestamp-millis",
+      "doc": "Event timestamp in ISO 8601 format"
+    },
+    {
+      "name": "metadata",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "EventMetadata",
+          "fields": [
+            {
+              "name": "source",
+              "type": ["null", "string"],
+              "default": null,
+              "doc": "Source system or service that generated the event"
+            },
+            {
+              "name": "trace_id",
+              "type": ["null", "string"],
+              "default": null,
+              "doc": "Distributed tracing ID"
+            },
+            {
+              "name": "version",
+              "type": "string",
+              "default": "1.0",
+              "doc": "Schema version"
+            }
+          ]
+        }
+      ],
+      "default": null,
+      "doc": "Optional metadata for the event"
+    }
+  ]
+}

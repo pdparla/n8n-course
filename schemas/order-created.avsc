@@ -1,0 +1,82 @@
+{
+  "type": "record",
+  "name": "OrderCreatedEvent",
+  "namespace": "com.n8n.kafka.events",
+  "doc": "Schema for order creation events",
+  "fields": [
+    {
+      "name": "event_type",
+      "type": "string",
+      "default": "order_created"
+    },
+    {
+      "name": "event_data",
+      "type": {
+        "type": "record",
+        "name": "OrderCreatedData",
+        "fields": [
+          {
+            "name": "order_id",
+            "type": "string",
+            "doc": "Unique order identifier"
+          },
+          {
+            "name": "customer_id",
+            "type": "string",
+            "doc": "Customer identifier"
+          },
+          {
+            "name": "items",
+            "type": {
+              "type": "array",
+              "items": {
+                "type": "record",
+                "name": "OrderItem",
+                "fields": [
+                  {
+                    "name": "product_id",
+                    "type": "string"
+                  },
+                  {
+                    "name": "quantity",
+                    "type": "int"
+                  },
+                  {
+                    "name": "price",
+                    "type": "double"
+                  }
+                ]
+              }
+            },
+            "doc": "List of items in the order"
+          },
+          {
+            "name": "total_amount",
+            "type": "double",
+            "doc": "Total order amount"
+          },
+          {
+            "name": "currency",
+            "type": "string",
+            "default": "USD",
+            "doc": "Currency code"
+          },
+          {
+            "name": "status",
+            "type": {
+              "type": "enum",
+              "name": "OrderStatus",
+              "symbols": ["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"]
+            },
+            "default": "PENDING"
+          }
+        ]
+      }
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "doc": "Event timestamp in ISO 8601 format"
+    }
+  ]
+}

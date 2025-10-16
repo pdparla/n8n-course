@@ -1,0 +1,64 @@
+{
+  "type": "record",
+  "name": "SystemLogEvent",
+  "namespace": "com.n8n.kafka.events",
+  "doc": "Schema for system log events",
+  "fields": [
+    {
+      "name": "event_type",
+      "type": "string",
+      "default": "system_log"
+    },
+    {
+      "name": "event_data",
+      "type": {
+        "type": "record",
+        "name": "SystemLogData",
+        "fields": [
+          {
+            "name": "level",
+            "type": {
+              "type": "enum",
+              "name": "LogLevel",
+              "symbols": ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+            },
+            "doc": "Log severity level"
+          },
+          {
+            "name": "service",
+            "type": "string",
+            "doc": "Service or application name"
+          },
+          {
+            "name": "message",
+            "type": "string",
+            "doc": "Log message"
+          },
+          {
+            "name": "error_code",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Optional error code"
+          },
+          {
+            "name": "stack_trace",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Optional stack trace for errors"
+          },
+          {
+            "name": "host",
+            "type": ["null", "string"],
+            "default": null,
+            "doc": "Host or container ID"
+          }
+        ]
+      }
+    },
+    {
+      "name": "timestamp",
+      "type": "string",
+      "doc": "Event timestamp in ISO 8601 format"
+    }
+  ]
+}

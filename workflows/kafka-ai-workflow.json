@@ -1,0 +1,209 @@
+{
+  "name": "Kafka AI Processing Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "topic": "ai-workflow-events",
+        "groupId": "n8n-consumer-group",
+        "useSchemaRegistry": true,
+        "schemaRegistryUrl": "http://schema-registry:8081/",
+        "options": {
+          "allowAutoTopicCreation": true
+        }
+      },
+      "id": "8d23e46f-0af4-4399-8a2e-f4f045ad2afe",
+      "name": "Kafka Trigger",
+      "type": "n8n-nodes-base.kafkaTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        -224
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "kafka": {
+          "id": "cDnbOBoCgA84dy67",
+          "name": "Kafka account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "5daf5ce2-ef5c-40fe-812b-07a4417064ca",
+      "name": "Extract Message Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -1632,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Gemini response and structure the output\\n\nconst geminiResponse = $input.first().json;\nconst aiResponse = geminiResponse.content.parts[0].text;\n\n// Extract structured data from AI response\nconst result = {\n  ai_analysis: aiResponse,\n  processed_at: new Date().toISOString()};\nreturn result;"
+      },
+      "id": "2ad8b503-5df9-4f51-88c2-7800e6da0924",
+      "name": "Process AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -1232,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.ai_analysis }}",
+              "operation": "contains",
+              "value2": "high"
+            }
+          ]
+        }
+      },
+      "id": "fe7857eb-b4b8-4d3f-9359-3685196c1aaf",
+      "name": "Check Priority",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1024,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "# Event Priority Analyst Agent\n\n## Role & Purpose\nYou are a technical event priority analyst that processes JSON messages from the 'ai-workflow-events' Kafka topic. Your sole responsibility is to analyze incoming events and assign priority levels (high, normal, low) based on predefined business rules.\n\n## Input Processing\nYou will receive JSON messages with the following structure:\n```json\n{\n  \"event_type\": \"event_type_name\",\n  \"event_data\": { ... },\n  \"timestamp\": \"ISO_timestamp\"\n}\n```\n\n## Priority Assignment Rules\n\n### System Log Events (`event_type: \"system_log\"`)\n- **HIGH**: `event_data.level` = \"ERROR\"\n- **LOW**: All other log levels (WARN, INFO, DEBUG, etc.)\n\n### Customer Feedback Events (`event_type: \"customer_feedback\"`)\n- **HIGH**: `event_data.rating` ≤ 2\n- **LOW**: `event_data.rating` > 2\n\n### Order Created Events (`event_type: \"order_created\"`)\n- **HIGH**: `event_data.total_amount` > 10000\n- **LOW**: `event_data.total_amount` ≤ 10000\n\n## Output Format\n- **ONLY** output the priority level as a single word: \"high\", \"normal\", or \"low\"\n- Do not include any explanations, reasoning, or additional text\n- Do not output JSON or any structured format\n- The output must be exactly one of the three priority levels\n\n## Response Language\n- Always respond in the same language as the user's input\n- For system prompt optimization, this prompt is in English\n\n## Examples\n\n**Input:**\n```json\n{\n  \"event_type\": \"system_log\",\n  \"event_data\": {\n    \"level\": \"ERROR\",\n    \"service\": \"payment-gateway\",\n    \"message\": \"Connection timeout to payment provider after 3 retries\",\n    \"error_code\": \"PAYMENT_TIMEOUT\"\n  },\n  \"timestamp\": \"2025-10-16T12:27:42.143Z\"\n}\n```\n**Output:** `high`\n\n**Input:**\n```json\n{\n  \"event_type\": \"customer_feedback\",\n  \"event_data\": {\n    \"customer_id\": \"CUST-12345\",\n    \"feedback\": \"The product quality is excellent, but delivery was delayed by 3 days.\",\n    \"rating\": 4\n  },\n  \"timestamp\": \"2025-10-16T12:28:57.405Z\"\n}\n```\n**Output:** `low`\n\n**Input:**\n```json\n{\n  \"event_type\": \"order_created\",\n  \"event_data\": {\n    \"order_id\": \"ORD-98765\",\n    \"customer_id\": \"CUST-54321\",\n    \"items\": [...],\n    \"total_amount\": 209.97\n  },\n  \"timestamp\": \"2025-10-16T12:27:42.143Z\"\n}\n```\n**Output:** `low`",
+              "role": "model"
+            },
+            {
+              "content": "={{ JSON.stringify($json.message, null, 2)  }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1488,
+        -224
+      ],
+      "id": "2fdc1877-b1a2-446b-ba90-2464d391d979",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "tAKxMQpebJ2A5ALM",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "504066002",
+        "text": "=There is an high priority error in {{ $item(\"0\").$node[\"Kafka Trigger\"].json[\"topic\"] }} topic: \n{{ JSON.stringify($item(\"0\").$node[\"Kafka Trigger\"].json[\"message\"], null, 2) }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_notification": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -816,
+        -416
+      ],
+      "id": "330d97c2-1afd-4908-b0f3-4c2e79ed48dd",
+      "name": "Send a text message",
+      "webhookId": "09654f80-9730-45aa-94ee-69d9fd735e99",
+      "credentials": {
+        "telegramApi": {
+          "id": "lm9uxGbCWM3COSQF",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Kafka Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Message Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Data": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process AI Response": {
+      "main": [
+        [
+          {
+            "node": "Check Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Priority": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Process AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "17395438-7af9-4782-a859-77bfc84c54e6",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "78d6fdb26a9e0b74063c70837293bd5ac7bff737bf3cf141057134778f89c2fd"
+  },
+  "id": "46tRXjYDR1d7PC1B",
+  "tags": []
+}

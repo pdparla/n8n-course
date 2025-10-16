@@ -1,0 +1,32 @@
+{
+  "name": "n8n-kafka-ai-workflow-course",
+  "version": "1.0.0",
+  "description": "n8n course: Building workflows with Kafka triggers and AI agents",
+  "main": "index.js",
+  "scripts": {
+    "docker:up": "docker-compose -f docker/kafka-compose.yml up -d",
+    "docker:down": "docker-compose -f docker/kafka-compose.yml down",
+    "schemas:register": "node scripts/register-schemas.js",
+    "test:workflow": "node scripts/test-workflow.js",
+    "test:workflow:avro": "node scripts/test-workflow-avro.js"
+  },
+  "keywords": [
+    "n8n",
+    "kafka",
+    "ai",
+    "workflow",
+    "automation",
+    "course"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "n8n": "^1.115.3"
+  },
+  "devDependencies": {
+    "@kafkajs/confluent-schema-registry": "^3.9.0",
+    "avro-js": "^1.12.1",
+    "axios": "^1.12.2",
+    "kafkajs": "^2.2.4"
+  }
+}
