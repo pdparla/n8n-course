@@ -1,0 +1,190 @@
+{
+  "name": "Confluent Cloud Cost Monitor - Monthly Charts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 0"
+            }
+          ]
+        }
+      },
+      "id": "schedule-weekly",
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate array of dates for last 30 days\nconst dates = [];\nfor (let i = 0; i < 30; i++) {\n  const date = $now.minus(i, 'days').toFormat('yyyy-MM-dd');\n  dates.push({\n    PK: 'COST',\n    SK: `DATE#${date}`,\n    date: date\n  });\n}\n\nreturn dates;"
+      },
+      "id": "generate-dates",
+      "name": "Generate Last 30 Days",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-in-batches",
+      "name": "Split In Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getItem",
+        "tableName": "confluent-cloud-costs",
+        "key": {
+          "property": [
+            {
+              "key": "PK",
+              "type": "S",
+              "value": "={{ $json.PK }}"
+            },
+            {
+              "key": "SK",
+              "type": "S",
+              "value": "={{ $json.SK }}"
+            }
+          ]
+        },
+        "options": {
+          "returnValues": "ALL_OLD"
+        }
+      },
+      "id": "dynamodb-get-day",
+      "name": "Get Day Cost",
+      "type": "n8n-nodes-base.aws",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "aws": {
+          "id": "2",
+          "name": "AWS Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node collects all items after the loop\nconst items = $input.all();\n\n// Filter out empty results and sort by date\nconst sortedData = items\n  .filter(item => item.json.Item && item.json.Item.totalCost)\n  .map(item => ({\n    date: item.json.Item.date.S,\n    cost: parseFloat(item.json.Item.totalCost.N)\n  }))\n  .sort((a, b) => new Date(a.date) - new Date(b.date));\n\nif (sortedData.length === 0) {\n  return {\n    error: 'No data found for the last 30 days'\n  };\n}\n\n// Calculate statistics\nconst totalCost = sortedData.reduce((sum, d) => sum + d.cost, 0);\nconst avgCost = totalCost / sortedData.length;\nconst minCost = Math.min(...sortedData.map(d => d.cost));\nconst maxCost = Math.max(...sortedData.map(d => d.cost));\n\n// Create chart configuration for QuickChart\nconst chartConfig = {\n  type: 'line',\n  data: {\n    labels: sortedData.map(d => d.date),\n    datasets: [\n      {\n        label: 'Daily Cost ($)',\n        data: sortedData.map(d => d.cost),\n        borderColor: 'rgb(75, 192, 192)',\n        backgroundColor: 'rgba(75, 192, 192, 0.2)',\n        tension: 0.3,\n        fill: true,\n        pointRadius: 3,\n        pointHoverRadius: 5\n      }\n    ]\n  },\n  options: {\n    responsive: true,\n    plugins: {\n      title: {\n        display: true,\n        text: 'Confluent Cloud - Last 30 Days Cost Trend',\n        font: {\n          size: 18\n        }\n      },\n      legend: {\n        display: true,\n        position: 'top'\n      }\n    },\n    scales: {\n      y: {\n        beginAtZero: true,\n        title: {\n          display: true,\n          text: 'Cost (USD)'\n        },\n        ticks: {\n          callback: function(value) {\n            return '$' + value.toFixed(2);\n          }\n        }\n      },\n      x: {\n        title: {\n          display: true,\n          text: 'Date'\n        },\n        ticks: {\n          maxRotation: 45,\n          minRotation: 45\n        }\n      }\n    }\n  }\n};\n\nconst chartUrl = `https://quickchart.io/chart?width=1000&height=500&c=${encodeURIComponent(JSON.stringify(chartConfig))}`;\n\nreturn {\n  chartUrl: chartUrl,\n  totalCost: totalCost.toFixed(2),\n  avgCost: avgCost.toFixed(2),\n  minCost: minCost.toFixed(2),\n  maxCost: maxCost.toFixed(2),\n  dataPoints: sortedData.length,\n  startDate: sortedData[0].date,\n  endDate: sortedData[sortedData.length - 1].date,\n  data: sortedData\n};"
+      },
+      "id": "aggregate-and-chart",
+      "name": "Aggregate Data & Create Chart",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "reports@yourcompany.com",
+        "toEmail": "you@yourcompany.com",
+        "subject": "📊 Confluent Cloud - Monthly Cost Report",
+        "emailType": "html",
+        "message": "<h2>📊 Confluent Cloud Cost Report</h2>\n\n<h3>Summary ({{ $json.startDate }} to {{ $json.endDate }})</h3>\n\n<table style=\"border-collapse: collapse; width: 100%; margin: 20px 0;\">\n  <tr style=\"background-color: #f2f2f2;\">\n    <td style=\"padding: 12px; border: 1px solid #ddd;\"><strong>Total Cost</strong></td>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\">${{ $json.totalCost }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\"><strong>Average Daily Cost</strong></td>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\">${{ $json.avgCost }}</td>\n  </tr>\n  <tr style=\"background-color: #f2f2f2;\">\n    <td style=\"padding: 12px; border: 1px solid #ddd;\"><strong>Minimum Daily Cost</strong></td>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\">${{ $json.minCost }}</td>\n  </tr>\n  <tr>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\"><strong>Maximum Daily Cost</strong></td>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\">${{ $json.maxCost }}</td>\n  </tr>\n  <tr style=\"background-color: #f2f2f2;\">\n    <td style=\"padding: 12px; border: 1px solid #ddd;\"><strong>Data Points</strong></td>\n    <td style=\"padding: 12px; border: 1px solid #ddd;\">{{ $json.dataPoints }} days</td>\n  </tr>\n</table>\n\n<h3>Cost Trend Chart</h3>\n<img src=\"{{ $json.chartUrl }}\" alt=\"Cost Trend Chart\" style=\"max-width: 100%; height: auto;\" />\n\n<hr style=\"margin: 30px 0;\" />\n\n<p style=\"font-size: 12px; color: #666;\">This is an automated report generated by your n8n workflow.</p>"
+      },
+      "id": "send-report",
+      "name": "Send Report Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ],
+      "credentials": {
+        "smtp": {
+          "id": "3",
+          "name": "SMTP Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Generate Last 30 Days",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Last 30 Days": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches": {
+      "main": [
+        [
+          {
+            "node": "Get Day Cost",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Aggregate Data & Create Chart",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Day Cost": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Data & Create Chart": {
+      "main": [
+        [
+          {
+            "node": "Send Report Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

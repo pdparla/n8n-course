@@ -1,0 +1,156 @@
+{
+  "name": "Weekly costs",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ]
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "e2cbceeb-48c9-4d96-90b9-d4b8e2260130",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableName": "confluent-cloud-costs",
+        "keyConditionExpression": "PK = :pk AND SK >= :sk",
+        "eavUi": {
+          "eavValues": [
+            {
+              "attribute": "pk",
+              "value": "COST"
+            },
+            {
+              "attribute": "sk",
+              "value": "=DATE#{{new Date(Date.now() - (7 * 24 * 60 * 60 * 1000)).toISOString().split('T')[0]}} "
+            }
+          ]
+        },
+        "limit": 7,
+        "select": "SPECIFIC_ATTRIBUTES",
+        "options": {
+          "projectionExpression": "costBreakdown"
+        }
+      },
+      "type": "n8n-nodes-base.awsDynamoDb",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c5530280-ed54-46b6-998a-e663cb834eaa",
+      "name": "Get many items",
+      "credentials": {
+        "aws": {
+          "id": "Q4e2C9SbBN4BFRPS",
+          "name": "AWS account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Flatten all costs from all items\nconst allCosts = items.flatMap(item => JSON.parse(item.json.costBreakdown) || []);\n\nconst getEnvironment = (displayName) => {\n  if (!displayName) return 'other';\n  \n  const lower = displayName.toLowerCase();\n  \n  if (lower.includes('pro')) return 'prod';\n  if (lower.includes('pre')) return 'pre';\n  if (lower.includes('int')) return 'int';\n  return 'other';\n};\n\nconst costsByEnvironment = allCosts.reduce((acc, cost) => {\n  const env = getEnvironment(cost.resource?.display_name);\n  \n  if (!acc[env]) {\n    acc[env] = {\n      environment: env,\n      totalAmount: 0,\n      totalOriginalAmount: 0,\n      totalDiscount: 0,\n      count: 0,\n      items: []\n    };\n  }\n  \n  acc[env].totalAmount += cost.amount || 0;\n  acc[env].totalOriginalAmount += cost.original_amount || 0;\n  acc[env].totalDiscount += cost.discount_amount || 0;\n  acc[env].count += 1;\n  acc[env].items.push(cost);\n  \n  return acc;\n}, {});\n\n\n\n\nreturn Object.values(costsByEnvironment).map(env => ({ json: env }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "e610c507-fb76-4e4e-be04-da22b54870e6",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "resource": "channelMessage",
+        "teamId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "message": "=Estos son los costes de la semana pasada: {{ JSON.stringify($input.all()) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "bfcd4e68-a025-4b4d-a6ec-19ae2d753126",
+      "name": "Create message",
+      "webhookId": "27662bcf-ffe7-45ae-8749-0620504b0821"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many items": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Create message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create message": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "edc206fd-c5ba-4329-9b7c-376618f7eb23",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "78d6fdb26a9e0b74063c70837293bd5ac7bff737bf3cf141057134778f89c2fd"
+  },
+  "id": "7zLLEqbdi4hZxe9y",
+  "tags": []
+}

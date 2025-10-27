@@ -1,0 +1,346 @@
+{
+  "name": "Confluent Cloud Cost Monitor - Daily",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "9887407a-5e4f-4353-a0ec-80ee30ec3291",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1760,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.confluent.cloud/billing/v1/costs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start_date",
+              "value": "={{ $now.minus(1, 'days').toFormat('yyyy-MM-dd') }}"
+            },
+            {
+              "name": "end_date",
+              "value": "={{ $now.toFormat('yyyy-MM-dd') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5ec683ae-04f0-4946-91b0-c744e9406191",
+      "name": "Get Confluent Costs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1536,
+        112
+      ],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "bo9emEYaUfjdxgET",
+          "name": "Unnamed credential"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const apiResponse = $input.first().json;\nconst costDate = apiResponse.data[0].start_date;\nconst timestamp = Math.floor(new Date(costDate).getTime() / 1000);\n\n// precise sum without libraries\nconst items = apiResponse.data || [];\n\nconst getDecimalPlaces = (n) => {\n  if (!Number.isFinite(n)) return 0;\n  // produce a non-exponential string and trim trailing zeros\n  const s = Math.abs(n).toFixed(20).replace(/0+$/, '');\n  const idx = s.indexOf('.');\n  return idx === -1 ? 0 : s.length - idx - 1;\n};\n\nconst maxDecimals = items.length ? Math.max(...items.map(({ amount }) => getDecimalPlaces(Number(amount)))) : 0;\nconst scale = Math.pow(10, Math.min(maxDecimals, 18)); // limit to avoid huge exponents\n\nconst sumScaled = items.reduce((acc, { amount }) => {\n  const v = Number(amount);\n  if (!Number.isFinite(v)) return acc;\n  return acc + Math.round(v * scale);\n}, 0);\n\nconst totalCost = sumScaled / scale;\n\nreturn {\n  PK: 'COST',\n  SK: `DATE#${costDate}`,\n  date: costDate,\n  totalCost: Number(totalCost.toFixed(4)),\n  costBreakdown: JSON.stringify(apiResponse.data),\n  timestamp: timestamp,\n  createdAt: new Date().toISOString()\n};"
+      },
+      "id": "49e2ef0d-ae21-4de1-a779-abfda128d8c4",
+      "name": "Transform API Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentData = $input.first().json;\nconst currentDate = currentData.date;\nconst previousDate = new Date(currentDate);\npreviousDate.setDate(previousDate.getDate() - 1);\nconst prevDateStr = previousDate.toISOString().split('T')[0];\n\nreturn {\n  currentCost: currentData.totalCost,\n  currentDate: currentDate,\n  previousDateKey: `DATE#${prevDateStr}`,\n  PK: 'COST'\n};"
+      },
+      "id": "244376d5-8f9f-40ec-a31e-060a8db3bbed",
+      "name": "Calculate Previous Day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const currentData = $(\"Calculate Previous Day\").first().json;\nconst previousData = $input.first().json;\n\n// Check if previous day data exists\nif (!previousData) {\n  return {\n    currentCost: currentData.currentCost,\n    previousCost: null,\n    percentageIncrease: 0,\n    shouldAlert: false,\n    date: currentData.currentDate,\n    message: 'No previous day data found - first day of tracking'\n  };\n}\n\nconst currentCost = currentData.currentCost;\nconst previousCost = parseFloat(previousData.totalCost.N);\n\nlet percentageIncrease = Number((((currentCost - previousCost) / previousCost) * 100).toFixed(2));\n\nreturn {\n  currentCost: currentCost,\n  previousCost: previousCost,\n  percentageIncrease: percentageIncrease,\n  shouldAlert: percentageIncrease > 10,\n  date: currentData.currentDate\n};"
+      },
+      "id": "d90f7831-e35f-4944-b7f3-e95bb55176bf",
+      "name": "Calculate Cost Increase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.shouldAlert }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "5e9835d8-7241-4223-8d38-86aa748ef13a",
+      "name": "Should Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "alerts@yourcompany.com",
+        "toEmail": "you@yourcompany.com",
+        "subject": "⚠️ Confluent Cloud Cost Alert - {{ $json.date }}",
+        "options": {}
+      },
+      "id": "5c3f33c8-0ebe-472b-9197-60e889b03565",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "8d2b8c14-7934-496f-b1ed-49b2229b1e09"
+    },
+    {
+      "parameters": {},
+      "id": "08d169da-1686-456b-91a7-efa22aeb1d66",
+      "name": "No Alert Needed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "tableName": "confluent-cloud-costs",
+        "dataToSend": "autoMapInputData",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.awsDynamoDb",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        368
+      ],
+      "id": "32f64dbe-8dec-4171-9d86-cc2d80c918f9",
+      "name": "Store costs dynamo",
+      "credentials": {
+        "aws": {
+          "id": "Q4e2C9SbBN4BFRPS",
+          "name": "AWS account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableName": "confluent-cloud-costs",
+        "select": "SPECIFIC_ATTRIBUTES",
+        "keysUi": {
+          "keyValues": [
+            {
+              "key": "PK",
+              "value": "COST"
+            },
+            {
+              "key": "SK",
+              "value": "={{ $json.previousDateKey }}"
+            }
+          ]
+        },
+        "additionalFields": {
+          "projectionExpression": "PK, SK, totalCost"
+        }
+      },
+      "type": "n8n-nodes-base.awsDynamoDb",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        112
+      ],
+      "id": "b8a972d6-0175-4b73-bc58-8460fe3e2012",
+      "name": "Get previous day costs",
+      "alwaysOutputData": false,
+      "credentials": {
+        "aws": {
+          "id": "Q4e2C9SbBN4BFRPS",
+          "name": "AWS account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "channelMessage",
+        "teamId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "channelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.microsoftTeams",
+      "typeVersion": 2,
+      "position": [
+        0,
+        -160
+      ],
+      "id": "5240dab4-a6b6-465f-83e9-c0ca370329d1",
+      "name": "Create message",
+      "webhookId": "4cebe7a5-362f-4454-aa5f-5877851a8ad6"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Get Confluent Costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Confluent Costs": {
+      "main": [
+        [
+          {
+            "node": "Transform API Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Cost Increase": {
+      "main": [
+        [
+          {
+            "node": "Should Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Alert?": {
+      "main": [
+        [
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Alert Needed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform API Response": {
+      "main": [
+        [
+          {
+            "node": "Store costs dynamo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Calculate Previous Day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store costs dynamo": {
+      "main": [
+        []
+      ]
+    },
+    "Calculate Previous Day": {
+      "main": [
+        [
+          {
+            "node": "Get previous day costs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get previous day costs": {
+      "main": [
+        [
+          {
+            "node": "Calculate Cost Increase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Alert": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3fcb2e72-3ffc-4227-9499-c67f48a647bb",
+  "meta": {
+    "instanceId": "78d6fdb26a9e0b74063c70837293bd5ac7bff737bf3cf141057134778f89c2fd"
+  },
+  "id": "O8cqppfNBzI66uBY",
+  "tags": []
+}
